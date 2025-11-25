@@ -22,6 +22,8 @@ def upgrade() -> None:
         "products",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column("sku", sa.String(length=128), nullable=False),
+        # case-insensitive key, generated lowercase of sku
+        sa.Column("sku_ci", sa.Text(), sa.Computed("lower(sku)", persisted=True), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("price", sa.Numeric(12, 2), nullable=True),
@@ -33,8 +35,8 @@ def upgrade() -> None:
     op.create_index("ix_products_name", "products", ["name"], unique=False)
     op.create_index("ix_products_active", "products", ["active"], unique=False)
 
-    # Case-insensitive unique index on LOWER(sku)
-    op.execute("CREATE UNIQUE INDEX ux_products_sku_ci ON products (LOWER(sku));")
+    # Unique constraint on generated lower(sku)
+    op.create_unique_constraint("uq_products_sku_ci", "products", ["sku_ci"])
 
     # webhooks table
     op.create_table(
@@ -52,7 +54,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("webhooks")
-    op.execute("DROP INDEX IF EXISTS ux_products_sku_ci;")
+    op.drop_constraint("uq_products_sku_ci", "products", type_="unique")
     op.drop_index("ix_products_active", table_name="products")
     op.drop_index("ix_products_name", table_name="products")
     op.drop_table("products")
