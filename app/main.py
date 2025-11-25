@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .routers.products import router as products_router
 from .routers.uploads import router as uploads_router
+from .routers.webhooks import router as webhooks_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -31,3 +32,4 @@ def root():
 # Routers
 app.include_router(products_router)
 app.include_router(uploads_router)
+app.include_router(webhooks_router)

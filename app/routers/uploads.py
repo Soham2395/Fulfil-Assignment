@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from app.celery_app import celery_app
-from app.utils import get_progress
+from app.utils import get_progress, get_errors, get_errors_count
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
@@ -65,3 +65,11 @@ async def progress_stream(task_id: str) -> EventSourceResponse:
             await asyncio.sleep(1)
 
     return EventSourceResponse(event_generator())
+
+
+@router.get("/errors/{task_id}")
+async def import_errors(task_id: str, limit: int = 100) -> JSONResponse:
+    """Return up to `limit` recent CSV row errors and the total error count for the task."""
+    errs = get_errors(task_id, limit=limit)
+    count = get_errors_count(task_id)
+    return JSONResponse({"count": count, "items": errs})

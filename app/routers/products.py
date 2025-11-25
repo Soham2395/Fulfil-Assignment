@@ -15,6 +15,7 @@ from app.schemas import (
     ProductOut,
     PaginatedResponse,
 )
+from app.webhooks_service import enqueue_event
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -69,6 +70,8 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
         # Likely SKU unique violation
         db.rollback()
         raise HTTPException(status_code=409, detail="Product with this SKU already exists (case-insensitive)")
+    # Fire webhook
+    enqueue_event(db, "product.created", {"id": prod.id, "sku": prod.sku, "name": prod.name})
     return prod
 
 
@@ -104,7 +107,8 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Update failed due to integrity constraints")
-
+    # Fire webhook
+    enqueue_event(db, "product.updated", {"id": prod.id, "sku": prod.sku, "name": prod.name})
     return prod
 
 
@@ -113,7 +117,10 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     prod = db.get(Product, product_id)
     if not prod:
         raise HTTPException(status_code=404, detail="Product not found")
+    # Capture payload before delete
+    payload = {"id": prod.id, "sku": prod.sku, "name": prod.name}
     db.delete(prod)
+    enqueue_event(db, "product.deleted", payload)
     return None
 
 
