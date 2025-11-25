@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import tempfile
 from typing import AsyncGenerator, Dict, Any
@@ -26,9 +27,12 @@ async def upload_csv(file: UploadFile = File(...)) -> JSONResponse:
     os.close(fd)
 
     try:
-        contents = await file.read()
         with open(temp_path, "wb") as out:
-            out.write(contents)
+            while True:
+                chunk = await file.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                out.write(chunk)
     finally:
         await file.close()
 
@@ -53,7 +57,7 @@ async def progress_stream(task_id: str) -> EventSourceResponse:
             if data and data != last_sent:
                 yield {
                     "event": "progress",
-                    "data": data,
+                    "data": json.dumps(data),
                 }
                 last_sent = data
                 if data.get("status") in {"completed", "failed"}:

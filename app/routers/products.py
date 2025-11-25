@@ -64,6 +64,7 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
     db.add(prod)
     try:
         db.flush()
+        db.refresh(prod)
     except IntegrityError:
         # Likely SKU unique violation
         db.rollback()
@@ -96,7 +97,10 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
         prod.active = payload.active
 
     try:
+        # bump updated_at server-side
+        prod.updated_at = func.now()
         db.flush()
+        db.refresh(prod)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Update failed due to integrity constraints")

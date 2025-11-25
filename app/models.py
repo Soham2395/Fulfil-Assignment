@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     Index,
+    func,
 )
 
 from .db import Base
@@ -27,8 +28,8 @@ class Product(Base):
     description = Column(Text, nullable=True)
     price = Column(Numeric(12, 2), nullable=True)
     active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("ix_products_name", "name"),
@@ -44,8 +45,8 @@ class Webhook(Base):
     url = Column(String(2048), nullable=False)
     event_type = Column(String(128), nullable=False)  # e.g., product.created, product.updated, product.deleted, import.completed
     enabled = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     # For UI visibility on test runs
     last_response_code = Column(Integer, nullable=True)
