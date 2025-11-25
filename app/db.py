@@ -37,3 +37,9 @@ def get_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency to provide a database session per-request."""
+    with get_session() as session:
+        yield session

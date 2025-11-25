@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import settings
+from .routers.products import router as products_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -24,3 +25,7 @@ def health():
 @app.get("/")
 def root():
     return {"message": f"Welcome to {settings.app_name}"}
+
+
+# Routers
+app.include_router(products_router)

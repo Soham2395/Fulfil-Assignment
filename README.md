@@ -41,3 +41,12 @@ Docker, Celery worker, Redis, and PostgreSQL compose setup will be added in late
 - Frontend
 - Webhooks
 - Containerization and deployment
+
+## Migrations (Alembic)
+1. Ensure `DATABASE_URL` is set (see `env.example`). For Neon/Supabase, include TLS, e.g. `?sslmode=require`.
+   - Example: `export DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@HOST:PORT/DBNAME?sslmode=require`
+2. Install dependencies: `pip install -r requirements.txt`
+3. Run migrations: `alembic upgrade head`
+4. To generate future migrations after model changes:
+   - `alembic revision --autogenerate -m "<message>"`
+   - `alembic upgrade head`
