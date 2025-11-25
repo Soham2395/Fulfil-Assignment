@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import os
 import time
 from datetime import datetime
@@ -8,6 +9,8 @@ from typing import List, Dict, Any
 
 import httpx
 from sqlalchemy import text
+
+logger = logging.getLogger(__name__)
 
 from .celery_app import celery_app
 from .db import engine, get_session
@@ -21,23 +24,10 @@ BATCH_SIZE = 5000
 @celery_app.task(name="import_csv")
 def import_csv(file_path: str) -> Dict[str, Any]:
     task_id = import_csv.request.id  # type: ignore[attr-defined]
-    # Initialize progress with unknown total first; we will update after counting
+    logger.info(f"Starting CSV import task {task_id} for file {file_path}")
+    # Single-pass import: no total upfront, update progress incrementally
     init_progress(task_id, total=0)
-    update_progress(task_id, status="running", stage="counting", message="Counting rows")
-
-    # First pass: count data rows (excluding header)
-    total_rows = 0
-    with open(file_path, "r", newline="", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        try:
-            header = next(reader)
-        except StopIteration:
-            update_progress(task_id, status="failed", stage="counting", message="Empty CSV file")
-            return {"status": "failed", "reason": "Empty CSV"}
-        for _ in reader:
-            total_rows += 1
-
-    update_progress(task_id, total=total_rows, stage="importing", message="Importing in batches")
+    update_progress(task_id, status="running", stage="importing", message="Importing in batches")
 
     insert_sql = text(
         """
@@ -98,9 +88,12 @@ def import_csv(file_path: str) -> Dict[str, Any]:
                 processed += len(batch)
                 update_progress(task_id, processed=processed, errors=errors)
 
-        update_progress(task_id, status="completed", stage="completed", message="Import complete")
+        # Set final total = processed for UI progress bar completion
+        update_progress(task_id, status="completed", stage="completed", total=processed, message="Import complete")
+        logger.info(f"CSV import {task_id} completed: {processed} processed, {errors} errors")
         return {"status": "completed", "processed": processed, "errors": errors}
     except Exception as e:
+        logger.error(f"CSV import {task_id} failed: {e}", exc_info=True)
         update_progress(task_id, status="failed", stage="importing", message=str(e))
         return {"status": "failed", "reason": str(e)}
     finally:
@@ -118,6 +111,7 @@ def _execute_batch(insert_sql, batch: List[Dict[str, Any]]):
 
 @celery_app.task(name="send_webhook", bind=True, max_retries=5)
 def send_webhook(self, webhook_id: int, event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    logger.debug(f"Sending webhook {webhook_id} for event {event_type}")
     # Fetch webhook, send request, and record last response stats
     with get_session() as db:
         wh = db.get(Webhook, webhook_id)
@@ -143,7 +137,14 @@ def send_webhook(self, webhook_id: int, event_type: str, payload: Dict[str, Any]
             with httpx.Client(timeout=8.0) as client:
                 resp = client.post(wh.url, json=payload, headers={"Content-Type": "application/json"})
                 code = resp.status_code
+                # Retry on 5xx server errors
+                if 500 <= code < 600:
+                    raise self.retry(countdown=2 ** self.request.retries, max_retries=3)
+        except httpx.RequestError as e:
+            # Retry on network errors (connection, timeout, etc.)
+            raise self.retry(exc=e, countdown=2 ** self.request.retries, max_retries=3)
         except Exception:
+            # Other errors: record but don't retry
             code = 0
         elapsed_ms = int((time.perf_counter() - start) * 1000)
 
@@ -151,5 +152,10 @@ def send_webhook(self, webhook_id: int, event_type: str, payload: Dict[str, Any]
         wh.last_response_code = code
         wh.last_response_time_ms = elapsed_ms
         db.flush()
+        
+        if code == 0:
+            logger.warning(f"Webhook {webhook_id} failed with code {code}")
+        else:
+            logger.info(f"Webhook {webhook_id} sent: {code} in {elapsed_ms}ms")
 
         return {"status": "sent", "status_code": code, "elapsed_ms": elapsed_ms}

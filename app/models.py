@@ -51,3 +51,7 @@ class Webhook(Base):
     # For UI visibility on test runs
     last_response_code = Column(Integer, nullable=True)
     last_response_time_ms = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("ix_webhooks_event_type_enabled", "event_type", "enabled"),
+    )

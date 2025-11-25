@@ -41,13 +41,17 @@ async def send_and_record(db: Session, webhook: Webhook, payload: Dict[str, Any]
     return {"status_code": code, "elapsed_ms": elapsed_ms}
 
 
-def enqueue_event(db: Session, event_type: str, payload: Dict[str, Any]) -> List[str]:
+def enqueue_event(event_type: str, payload: Dict[str, Any]) -> List[str]:
     """Enqueue webhook deliveries for all enabled webhooks for the event.
+    Creates its own DB session to avoid session reuse issues.
     Returns a list of Celery task IDs.
     """
-    webhooks = get_enabled_webhooks(db, event_type)
-    task_ids: List[str] = []
-    for wh in webhooks:
-        task = celery_app.send_task("send_webhook", args=[wh.id, event_type, payload])
-        task_ids.append(task.id)
-    return task_ids
+    from .db import get_session
+    
+    with get_session() as db:
+        webhooks = get_enabled_webhooks(db, event_type)
+        task_ids: List[str] = []
+        for wh in webhooks:
+            task = celery_app.send_task("send_webhook", args=[wh.id, event_type, payload])
+            task_ids.append(task.id)
+        return task_ids

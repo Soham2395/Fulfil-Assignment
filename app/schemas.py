@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 # Product Schemas
@@ -49,10 +49,10 @@ class PaginatedResponse(BaseModel):
     items: List[ProductOut]
 
 
-# Webhook Schemas (placeholders for later)
+# Webhook Schemas
 class WebhookBase(BaseModel):
-    url: str
-    event_type: str
+    url: HttpUrl  # Validates HTTP/HTTPS URLs
+    event_type: str = Field(min_length=1, max_length=128)
     enabled: bool = True
 
 
@@ -61,8 +61,8 @@ class WebhookCreate(WebhookBase):
 
 
 class WebhookUpdate(BaseModel):
-    url: Optional[str] = None
-    event_type: Optional[str] = None
+    url: Optional[HttpUrl] = None
+    event_type: Optional[str] = Field(default=None, min_length=1, max_length=128)
     enabled: Optional[bool] = None
 
 

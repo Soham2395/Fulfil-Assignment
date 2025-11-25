@@ -20,6 +20,10 @@ router = APIRouter(prefix="/uploads", tags=["uploads"])
 async def upload_csv(file: UploadFile = File(...)) -> JSONResponse:
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Please upload a .csv file")
+    
+    # Enforce max file size (200MB for ~500k rows; adjust as needed)
+    MAX_SIZE = 200 * 1024 * 1024  # 200MB
+    file_size = 0
 
     # Save to a temporary file
     suffix = os.path.splitext(file.filename)[1]
@@ -32,7 +36,17 @@ async def upload_csv(file: UploadFile = File(...)) -> JSONResponse:
                 chunk = await file.read(1024 * 1024)  # 1MB chunks
                 if not chunk:
                     break
+                file_size += len(chunk)
+                if file_size > MAX_SIZE:
+                    raise HTTPException(status_code=413, detail=f"File too large. Max size: {MAX_SIZE // (1024*1024)}MB")
                 out.write(chunk)
+    except HTTPException:
+        # Clean up temp file on size limit error
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+        raise
     finally:
         await file.close()
 

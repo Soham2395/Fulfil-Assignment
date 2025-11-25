@@ -66,12 +66,24 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
     try:
         db.flush()
         db.refresh(prod)
+        # Commit transaction before webhook dispatch to avoid blocking
+        db.commit()
     except IntegrityError:
-        # Likely SKU unique violation
         db.rollback()
         raise HTTPException(status_code=409, detail="Product with this SKU already exists (case-insensitive)")
-    # Fire webhook
-    enqueue_event(db, "product.created", {"id": prod.id, "sku": prod.sku, "name": prod.name})
+    
+    # Fire webhook outside transaction (fire-and-forget)
+    try:
+        from datetime import datetime
+        enqueue_event("product.created", {
+            "id": prod.id,
+            "sku": prod.sku,
+            "name": prod.name,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    except Exception:
+        pass  
+    
     return prod
 
 
@@ -104,11 +116,24 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
         prod.updated_at = func.now()
         db.flush()
         db.refresh(prod)
+        # Commit transaction before webhook dispatch
+        db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Update failed due to integrity constraints")
-    # Fire webhook
-    enqueue_event(db, "product.updated", {"id": prod.id, "sku": prod.sku, "name": prod.name})
+    
+    # Fire webhook outside transaction
+    try:
+        from datetime import datetime
+        enqueue_event("product.updated", {
+            "id": prod.id,
+            "sku": prod.sku,
+            "name": prod.name,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    except Exception:
+        pass
+    
     return prod
 
 
@@ -120,7 +145,16 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     # Capture payload before delete
     payload = {"id": prod.id, "sku": prod.sku, "name": prod.name}
     db.delete(prod)
-    enqueue_event(db, "product.deleted", payload)
+    db.commit()
+    
+    # Fire webhook outside transaction
+    try:
+        from datetime import datetime
+        payload["timestamp"] = datetime.utcnow().isoformat()
+        enqueue_event("product.deleted", payload)
+    except Exception:
+        pass
+    
     return None
 
 
@@ -129,7 +163,22 @@ def delete_all_products(confirm: bool = Query(default=False), db: Session = Depe
     if not confirm:
         raise HTTPException(status_code=400, detail="Set confirm=true to delete all products")
 
+    # Get count before delete for webhook payload
+    count_before = db.execute(select(func.count()).select_from(Product)).scalar_one()
+    
     # Efficient bulk delete
     result = db.execute(delete(Product))
     deleted = result.rowcount or 0
+    db.commit()
+    
+    # Fire bulk delete webhook event
+    try:
+        from datetime import datetime
+        enqueue_event("products.bulk_deleted", {
+            "count": deleted,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    except Exception:
+        pass
+    
     return {"deleted": deleted}

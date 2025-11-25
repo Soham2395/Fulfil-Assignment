@@ -8,9 +8,19 @@ import redis
 
 from .config import settings
 
+# Singleton Redis connection pool for efficiency
+_redis_pool = None
+
 
 def get_redis_client() -> redis.Redis:
-    return redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = redis.ConnectionPool.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            max_connections=20,
+        )
+    return redis.Redis(connection_pool=_redis_pool)
 
 
 def progress_key(task_id: str) -> str:
@@ -77,12 +87,22 @@ def get_errors_count(task_id: str) -> int:
 
 # --- Simple fixed-window rate limiter (per key) ---
 
+# Lua script for atomic rate limiting (avoids race condition between INCR and EXPIRE)
+RATE_LIMIT_LUA = """
+local key = KEYS[1]
+local limit = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local current = redis.call('INCR', key)
+if current == 1 then
+    redis.call('EXPIRE', key, window)
+end
+return current
+"""
+
 def is_rate_limited(key: str, limit: int, window_seconds: int) -> bool:
     """Return True if the given key has exceeded the limit within the window.
-    Uses INCR with window TTL (fixed window). Suitable for simple webhook limiting.
+    Uses Lua script for atomic INCR+EXPIRE to avoid race conditions.
     """
     r = get_redis_client()
-    count = r.incr(key)
-    if count == 1:
-        r.expire(key, window_seconds)
-    return count > limit
+    count = r.eval(RATE_LIMIT_LUA, 1, key, limit, window_seconds)
+    return int(count) > limit

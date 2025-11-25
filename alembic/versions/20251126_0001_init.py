@@ -50,9 +50,13 @@ def upgrade() -> None:
         sa.Column("last_response_code", sa.Integer(), nullable=True),
         sa.Column("last_response_time_ms", sa.Integer(), nullable=True),
     )
+    
+    # Index for webhook queries (filter by event_type and enabled)
+    op.create_index("ix_webhooks_event_type_enabled", "webhooks", ["event_type", "enabled"], unique=False)
 
 
 def downgrade() -> None:
+    op.drop_index("ix_webhooks_event_type_enabled", table_name="webhooks")
     op.drop_table("webhooks")
     op.drop_constraint("uq_products_sku_ci", "products", type_="unique")
     op.drop_index("ix_products_active", table_name="products")
