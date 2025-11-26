@@ -8,6 +8,7 @@ celery_app = Celery(
     "acme_importer",
     broker=settings.broker_url,
     backend=settings.result_backend,
+    include=["app.tasks"], 
 )
 
 celery_app.conf.update(
@@ -19,6 +20,11 @@ celery_app.conf.update(
     broker_heartbeat=30,
     broker_pool_limit=10,
 )
+
+try:
+    from . import tasks as _tasks  
+except Exception:
+    pass
 
 
 @celery_app.task(name="ping")

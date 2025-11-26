@@ -25,8 +25,24 @@ BATCH_SIZE = 5000
 def import_csv(file_path: str) -> Dict[str, Any]:
     task_id = import_csv.request.id  # type: ignore[attr-defined]
     logger.info(f"Starting CSV import task {task_id} for file {file_path}")
-    # Single-pass import: no total upfront, update progress incrementally
-    init_progress(task_id, total=0)
+    # Count total logical CSV records (excluding header) for an accurate progress bar.
+    # Use csv.reader so embedded newlines in quoted fields do not inflate the count.
+    total_rows = 0
+    try:
+        with open(file_path, "r", newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            # Skip header row (if present)
+            _ = next(reader, None)
+            for rec in reader:
+                # Skip completely blank records
+                if not rec or all((str(c).strip() == "" for c in rec)):
+                    continue
+                total_rows += 1
+    except Exception as e:
+        logger.warning(f"Failed to count rows for task {task_id}: {e}")
+        total_rows = 0
+
+    init_progress(task_id, total=total_rows)
     update_progress(task_id, status="running", stage="importing", message="Importing in batches")
 
     insert_sql = text(
