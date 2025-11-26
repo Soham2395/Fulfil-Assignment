@@ -1,0 +1,16 @@
+__pycache__
+*.py[cod]
+*.sqlite3
+*.db
+.env
+.git
+.gitignore
+.vscode
+.mypy_cache
+.pytest_cache
+node_modules
+frontend/.next
+frontend/node_modules
+*.log
+*.csv
+.DS_Store

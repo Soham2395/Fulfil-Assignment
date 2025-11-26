@@ -1,0 +1,81 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: acme_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: acme
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: acme_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    image: acme-backend:latest
+    container_name: acme_api
+    environment:
+      ENVIRONMENT: development
+      HOST: 0.0.0.0
+      PORT: 8000
+      SERVICE: api
+      # Database DSN used by app/config
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/acme
+      # Optional host/port hints for entrypoint waits
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      # Redis endpoints
+      REDIS_URL: redis://redis:6379/0
+      BROKER_URL: redis://redis:6379/1
+      RESULT_BACKEND: redis://redis:6379/2
+      # CORS for local dev
+      CORS_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: acme-backend:latest
+    container_name: acme_worker
+    environment:
+      ENVIRONMENT: development
+      SERVICE: worker
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/acme
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      BROKER_URL: redis://redis:6379/1
+      RESULT_BACKEND: redis://redis:6379/2
+      CELERY_LOGLEVEL: info
+      CELERY_CONCURRENCY: 2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  db_data:
