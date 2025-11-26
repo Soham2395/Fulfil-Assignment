@@ -16,22 +16,45 @@ Tech stack:
 - Products CRUD with filters and pagination.
 - Webhooks persisted and dispatched async on product events.
 
-## Getting started (local, minimal)
-1. Python 3.11+
-2. Create and activate virtualenv
-3. Install deps: `pip install -r requirements.txt`
-4. Run API locally: `uvicorn app.main:app --reload`
-5. Visit http://localhost:8000/health
+## Getting started (local)
 
-Docker, Celery worker, Redis, and PostgreSQL compose setup will be added in later steps.
+There are two ways to run locally:
 
-## Using Upstash Redis
-- Upstash provides Redis over TLS. Use a `rediss://` URL.
-- Example:
-  - `REDIS_URL=rediss://default:<password>@<host>:<port>`
-  - `BROKER_URL=${REDIS_URL}`
-  - `RESULT_BACKEND=${REDIS_URL}`
-- Put these in your environment or copy and edit `env.example`.
+1) Without Docker (simple local dev)
+- Python 3.11+
+- Create and activate a virtualenv
+- Install deps: `pip install -r requirements.txt`
+- Create a `.env` in the repo root (see "Environment variables" below)
+- Run DB migrations: `alembic upgrade head`
+- Start API: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
+- Start Celery worker: `celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=2`
+- Visit http://localhost:8000/health
+
+2) With Docker Compose (Postgres + Redis + API + Worker)
+- Ensure Docker Desktop is running
+- Copy `.env` variables you need; Compose also sets sane defaults for local containers
+- Start: `docker compose up --build`
+- API: http://localhost:8000
+- Logs: `docker compose logs -f api` and `docker compose logs -f worker`
+
+## Environment variables
+
+The app reads configuration from environment variables via `app/config.py` (Pydantic Settings). A `.env` file in the repo root is automatically loaded in local development.
+
+Minimum set for local development:
+
+```
+# Postgres (SQLAlchemy URL uses driver prefix)
+DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@HOST:5432/DBNAME
+
+# Redis / Celery
+# REDIS_URL=redis://localhost:6379/0
+# BROKER_URL=redis://localhost:6379/1
+# RESULT_BACKEND=redis://localhost:6379/2
+
+# CORS (optional)
+CORS_ORIGINS=*
+```
 
 ## Roadmap
 - Scaffold repo (this commit)
@@ -42,14 +65,43 @@ Docker, Celery worker, Redis, and PostgreSQL compose setup will be added in late
 - Webhooks
 - Containerization and deployment
 
+## Running the services
+
+### Without Docker
+- API: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
+- Worker: `celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=2`
+
+### With Docker Compose
+- Start everything: `docker compose up --build`
+- Stop: `docker compose down`
+
+### Service discovery and ports
+- API exposed on port 8000 by default (see `Dockerfile` and `docker-compose.yml`).
+- Redis and Postgres ports are mapped for local access when using Compose.
+
 ## Migrations (Alembic)
-1. Ensure `DATABASE_URL` is set (see `env.example`). For Neon/Supabase, include TLS, e.g. `?sslmode=require`.
-   - Example: `export DATABASE_URL=postgresql+psycopg2://USER:PASSWORD@HOST:PORT/DBNAME?sslmode=require`
+1. Ensure `DATABASE_URL` is set. Use the SQLAlchemy driver prefix: `postgresql+psycopg2://...`
+   - Cloud DBs that require TLS may append `?sslmode=require`.
 2. Install dependencies: `pip install -r requirements.txt`
-3. Run migrations: `alembic upgrade head`
-4. To generate future migrations after model changes:
+3. Apply migrations: `alembic upgrade head`
+4. Generate migrations after model changes:
    - `alembic revision --autogenerate -m "<message>"`
    - `alembic upgrade head`
+5. Note: When running via Docker, the `docker/entrypoint.sh` runs `alembic upgrade head` on container start to keep the schema up to date.
+
+## Docker Compose quickstart
+
+`docker-compose.yml` provisions:
+- `db` (Postgres)
+- `redis`
+- `api` (FastAPI)
+- `worker` (Celery)
+
+Useful commands:
+- Build and start: `docker compose up --build`
+- Tail logs for API: `docker compose logs -f api`
+- Tail logs for Worker: `docker compose logs -f worker`
+- Stop and remove: `docker compose down`
 
 ## Performance and Scalability
 
