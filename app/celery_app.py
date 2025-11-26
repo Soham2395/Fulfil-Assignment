@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import ssl
 from celery import Celery
-
 from .config import settings
 
 celery_app = Celery(
@@ -12,11 +12,11 @@ celery_app = Celery(
 )
 
 celery_app.conf.broker_use_ssl = {
-    "ssl_cert_reqs": "CERT_NONE"
+    "ssl_cert_reqs": ssl.CERT_NONE
 }
 
 celery_app.conf.redis_backend_use_ssl = {
-    "ssl_cert_reqs": "CERT_NONE"
+    "ssl_cert_reqs": ssl.CERT_NONE
 }
 
 celery_app.conf.update(
