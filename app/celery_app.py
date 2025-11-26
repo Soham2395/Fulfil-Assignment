@@ -8,8 +8,16 @@ celery_app = Celery(
     "acme_importer",
     broker=settings.broker_url,
     backend=settings.result_backend,
-    include=["app.tasks"], 
+    include=["app.tasks"],
 )
+
+celery_app.conf.broker_use_ssl = {
+    "ssl_cert_reqs": "CERT_NONE"
+}
+
+celery_app.conf.redis_backend_use_ssl = {
+    "ssl_cert_reqs": "CERT_NONE"
+}
 
 celery_app.conf.update(
     task_serializer="json",
@@ -22,7 +30,7 @@ celery_app.conf.update(
 )
 
 try:
-    from . import tasks as _tasks  
+    from . import tasks as _tasks
 except Exception:
     pass
 
